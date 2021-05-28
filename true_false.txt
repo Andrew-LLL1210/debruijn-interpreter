@@ -1,0 +1,4 @@
+(T \\1)
+(F \\0)
+
+\0 "You chose True\n" "You chose False\n" \0
