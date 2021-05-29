@@ -88,7 +88,6 @@ def exec(progm):
             ls = list(ls[0])
         else:
             ls[0] = ls[0](ls.pop(1))
-    return group(ls)
 
 
 import sys
