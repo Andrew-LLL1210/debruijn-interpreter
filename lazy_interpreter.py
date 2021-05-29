@@ -7,6 +7,8 @@ def increment(obj, y, level):
     for i, x in enumerate(obj):
         if type(x) is group:
             obj[i] = group(increment(x, y, level))
+        if type(x) is token:
+            obj[i] = token(increment(x, y, level))
         elif type(x) is lda:
             obj[i] = lda(increment(x, y, level + 1))
         elif type(x) is int and x > level:
@@ -18,6 +20,8 @@ def replace_in(obj, y, level):
     for i, x in enumerate(obj):
         if type(x) is group:
             obj[i] = group(replace_in(x, y, level))
+        if type(x) is token:
+            obj[i] = token(replace_in(x, y, level))
         elif type(x) is lda:
             obj[i] = lda(replace_in(x, y, level + 1))
         elif x == level:
@@ -30,6 +34,7 @@ class lda(tuple):
     def __call__(self, y):
         return group(increment(replace_in(self, y, 0), -1, 0))
 class group(tuple): pass
+class token(tuple): pass
 class printer(str):
     def __call__(self, y):
         print(self, end='')
@@ -52,7 +57,8 @@ def deBruijn(string):
             elif ch in '([':
                 new_grp = []
                 loop(src, new_grp)
-                dest.append(group(new_grp))
+                dest.append(
+                    (group if ch == '(' else token)(new_grp))
             elif ch in ')]':
                 return is_lda
             elif ch in '0123456789':
@@ -77,14 +83,16 @@ def deBruijn(string):
     loop(iter(string), a)
     return group(a)
 
-def exec(progm):
-    if type(progm) is not group: return progm
+def exec(progm, head=False):
+    if type(progm) not in [group, token]: return progm
     ls = list(progm)
     while True:
         if type(ls[0]) is group:
             ls = list(ls[0]) + ls[1:]
+        elif type(ls[0]) is token and head:
+            ls = list(ls[0]) + ls[1:]
         elif len(ls) == 1:
-            if type(ls[0]) is not group: return ls[0]
+            if type(ls[0]) not in [group, token]: return ls[0]
             ls = list(ls[0])
         else:
             ls[0] = ls[0](ls.pop(1))
@@ -96,10 +104,10 @@ def exec_file(file, args):
     with open(file) as file:
         source = file.read()
 
-    progm = exec(deBruijn(source))
+    progm = exec(deBruijn(source), True)
 
     for arg in args:
-        progm = exec(progm(deBruijn(arg)))
+        progm = exec(progm(deBruijn(arg)), True)
     return progm
 
 if __name__ == '__main__':
