@@ -100,6 +100,7 @@ def exec_file(file, args):
 
     for arg in args:
         progm = exec(progm(deBruijn(arg)))
+    return progm
 
 if __name__ == '__main__':
-    exec_file(sys.argv[1], sys.argv[2:])
+    print('\nrem:', exec_file(sys.argv[1], sys.argv[2:]))
