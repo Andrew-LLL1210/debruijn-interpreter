@@ -102,4 +102,4 @@ def exec_file(file, args):
         progm = exec(progm(deBruijn(arg)))
 
 if __name__ == '__main__':
-    exec_file(*sys.argv[1:])
+    exec_file(sys.argv[1], sys.argv[2:])
