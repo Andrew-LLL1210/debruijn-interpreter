@@ -61,8 +61,10 @@ class lda(group):
         return lda(*super().shift(amount, bind_level + 1).body)
     def to_group(self): return group(*self.body)
     def __str__(self):
+        if self.message is not None: return f"\"λ {stringify_expression(self.body)}"
         return f"λ {stringify_expression(self.body)}"
     def __repr__(self):
+        if self.message is not None: return f"\"λ {' '.join(repr(x) for x in self.body)};"
         return f"λ {' '.join(repr(x) for x in self.body)};"
 
 @dataclass
@@ -116,6 +118,10 @@ def read_component_len(str):
     elif str[0] in '0123456789': # index
         match = re.match(r'[0-9]+', str)[0]
         return index(int(match)), len(match)
+    elif str[0] == '"': # printer lda
+        match = re.match(r'"([^"]|\\")*"', str)[0]
+        message = match[1:-1]
+        return lda(index(0), message=message), len(match)
     else: # identifier
         if str[0] == '.':
             raise NotImplementedError()
@@ -128,6 +134,10 @@ def reduce_once(comp):
     'returns None if no reduction is possible, otherwise returns the reduced component'
     if not isinstance(comp, component): raise TypeError('component required')
     
+    if isinstance(comp, lda) and comp.message is not None:
+        print(comp.message, end='')
+        return lda(*comp.body)
+
     if isinstance(comp, group):
         T = type(comp)
 
