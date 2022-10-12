@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from email import message
 import re
 import sys
 from typing import Optional
@@ -33,11 +34,6 @@ class index(component):
     def shift(self, amount, bind_level=-1):
         if self.num > bind_level: return index(self.num + amount) # shift free variable
         return self # bound variable unchanged
-    def reduce1(self):
-        if self.message is not None:
-            print(self.message, end='')
-            return lda(*self.body)
-        return super().reduce1()
 
     def __str__(self):
         return str(self.num)
@@ -47,38 +43,43 @@ class index(component):
 @dataclass
 class group(component):
     body: tuple
-    irriducible: bool
-    def __init__(self, *body, irriducible=False):
-        self.body, self.irriducible = body, irriducible
+    redux: bool
+    msg: Optional[str]
+    def __init__(self, *body, redux=False, msg=None):
+        self.body, self.redux, self.msg = body, redux, msg
     def apply(self, arg, bind_level=-1):
-        return group(*(x.apply(arg, bind_level) for x in self.body), irriducible=self.irriducible)
+        return group(*(x.apply(arg, bind_level) for x in self.body), redux=self.redux)
     def shift(self, amount, bind_level=-1):
-        return group(*(x.shift(amount, bind_level) for x in self.body), irriducible=self.irriducible)
+        return group(*(x.shift(amount, bind_level) for x in self.body), redux=self.redux)
     def reduce1(self):
+        if self.msg is not None:
+            print(self.msg, end='')
+            return lda(*self.body)
+
         T = type(self)
         if len(self.body) == 0: raise ValueError('empty group')
         # singleton group reduces to its element
         if len(self.body) == 1 and T is group: return self.body[0]
         # groups are unnecessary at the beginning of a group body
-        if type(self.body[0]) is group and not self.body[0].irriducible:
-            return T(*self.body[0].body, *self.body[1:])
+        if type(self.body[0]) is group and self.body[0].redux:
+            return T(*self.body[0].body, *self.body[1:], msg=self.msg)
         
         # if a lamba is at the head, it can be applied to group
         if len(self.body) >= 2 and isinstance(self.body[0], lda):
             lamb = self.body[0]
             arg = self.body[1]
-            return T(lamb.apply(arg).to_group(), *self.body[2:])
+            return T(lamb.apply(arg).to_group(), *self.body[2:], msg=self.msg)
         
         # if a reducible group is anywhere in the head, reduce it
         for i, sub in enumerate(self.body):
-            if isinstance(sub, group) and not sub.irriducible and (red := sub.reduce1()):
-                return T(*self.body[:i], red, *self.body[i+1:])
+            if isinstance(sub, group) and sub.redux and (red := sub.reduce1()):
+                return T(*self.body[:i], red, *self.body[i+1:], msg=self.msg)
         else: return None
     def __str__(self):
-        if self.irriducible: return f"[{stringify_expression(self.body)}]"
+        if self.redux: return f"[{stringify_expression(self.body)}]"
         return f"({stringify_expression(self.body)})"
     def __repr__(self):
-        if self.irriducible: return f'[{" ".join(repr(x) for x in self.body)}]'
+        if self.redux: return f'[{" ".join(repr(x) for x in self.body)}]'
         return f'({" ".join(repr(x) for x in self.body)})'
 
 
