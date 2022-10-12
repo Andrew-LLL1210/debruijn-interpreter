@@ -14,6 +14,14 @@ class component:
         'increment the free variables in the expression (n >= `bind_level`) by `amount`'
         pass
     def reify(): pass
+    def reduce1(self):
+        'reduces the component once, returning None if no reduction is possible'
+        pass
+    def reduce(self):
+        'reduces the component into normal form'
+        res = self
+        while (self := self.reduce1()): res = self
+        return res
 
 @dataclass
 class index(component):
@@ -25,6 +33,12 @@ class index(component):
     def shift(self, amount, bind_level=-1):
         if self.num > bind_level: return index(self.num + amount) # shift free variable
         return self # bound variable unchanged
+    def reduce1(self):
+        if self.message is not None:
+            print(self.message, end='')
+            return lda(*self.body)
+        return super().reduce1()
+
     def __str__(self):
         return str(self.num)
     def __repr__(self):
@@ -40,6 +54,26 @@ class group(component):
         return group(*(x.apply(arg, bind_level) for x in self.body), irriducible=self.irriducible)
     def shift(self, amount, bind_level=-1):
         return group(*(x.shift(amount, bind_level) for x in self.body), irriducible=self.irriducible)
+    def reduce1(self):
+        T = type(self)
+        if len(self.body) == 0: raise ValueError('empty group')
+        # singleton group reduces to its element
+        if len(self.body) == 1 and T is group: return self.body[0]
+        # groups are unnecessary at the beginning of a group body
+        if type(self.body[0]) is group and not self.body[0].irriducible:
+            return T(*self.body[0].body, *self.body[1:])
+        
+        # if a lamba is at the head, it can be applied to group
+        if len(self.body) >= 2 and isinstance(self.body[0], lda):
+            lamb = self.body[0]
+            arg = self.body[1]
+            return T(lamb.apply(arg).to_group(), *self.body[2:])
+        
+        # if a reducible group is anywhere in the head, reduce it
+        for i, sub in enumerate(self.body):
+            if isinstance(sub, group) and not sub.irriducible and (red := sub.reduce1()):
+                return T(*self.body[:i], red, *self.body[i+1:])
+        else: return None
     def __str__(self):
         if self.irriducible: return f"[{stringify_expression(self.body)}]"
         return f"({stringify_expression(self.body)})"
@@ -61,8 +95,10 @@ class lda(group):
         return lda(*super().shift(amount, bind_level + 1).body)
     def to_group(self): return group(*self.body)
     def __str__(self):
+        if self.message is not None: return f"\"λ {stringify_expression(self.body)}"
         return f"λ {stringify_expression(self.body)}"
     def __repr__(self):
+        if self.message is not None: return f"\"λ {' '.join(repr(x) for x in self.body)};"
         return f"λ {' '.join(repr(x) for x in self.body)};"
 
 @dataclass
@@ -74,6 +110,8 @@ class identifier(component):
         return self.reify().apply(arg, bind_level)
     def shift(self, amount, bind_level=-1):
         return self.reify().shift(amount, bind_level)
+    def reduce1(self):
+        return self.reify()
     def __str__(self):
         return self.id
     def __repr__(self):
@@ -116,6 +154,10 @@ def read_component_len(str):
     elif str[0] in '0123456789': # index
         match = re.match(r'[0-9]+', str)[0]
         return index(int(match)), len(match)
+    elif str[0] == '"': # printer lda
+        match = re.match(r'"([^"]|\\")*"', str)[0]
+        message = match[1:-1]
+        return lda(index(0), message=message), len(match)
     else: # identifier
         if str[0] == '.':
             raise NotImplementedError()
@@ -124,40 +166,6 @@ def read_component_len(str):
 false = read_component(r'\\0')
 successor = read_component(r'\\\1(210)')
 
-def reduce_once(comp):
-    'returns None if no reduction is possible, otherwise returns the reduced component'
-    if not isinstance(comp, component): raise TypeError('component required')
-    
-    if isinstance(comp, group):
-        T = type(comp)
-
-        if len(comp.body) == 0: raise ValueError('empty group')
-        # singleton group reduces to its element
-        if len(comp.body) == 1 and T is group: return comp.body[0]
-        # groups are unnecessary at the beginning of a group body
-        if type(comp.body[0]) is group and not comp.body[0].irriducible:
-            return T(*comp.body[0].body, *comp.body[1:])
-        
-        # if a lamba is at the head, it can be applied to group
-        if len(comp.body) >= 2 and isinstance(comp.body[0], lda):
-            lamb = comp.body[0]
-            arg = comp.body[1]
-            return T(lamb.apply(arg).to_group(), *comp.body[2:])
-        
-        # if a reducible group is anywhere in the head, reduce it
-        for i, sub in enumerate(comp.body):
-            if isinstance(sub, group) and not sub.irriducible and (red := reduce_once(sub)):
-                return T(*comp.body[:i], red, *comp.body[i+1:])
-        else: return None
-    elif isinstance(comp, identifier): return comp.reify()
-    else: return None
-
-def reduce_max(comp):
-    res = comp
-    while (comp := reduce_once(comp)): res = comp
-    return res
-
-# print(false)
 c0 = group(*read_components(r'(\\1(1 0))(\\\1(2 1 0))\\1 0'))
 
 # TODO extract into libs
@@ -167,7 +175,7 @@ def main():
     with open(sys.argv[1]) as file:
         program = file.read()
     ir = group(*read_components(program))
-    ir = reduce_max(ir)
+    ir = ir.reduce()
     print('rem:', ir)
 
 if __name__ == '__main__': main()
