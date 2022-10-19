@@ -10,7 +10,7 @@ See the [Esolang Wiki page][page] for more information on DeBruijn
 
 The language DeBruijn is based off of a notation called the [De Bruijn Index][wikip],
 used for representing terms of lambda calculus. Notably, DeBruijn uses 0-based indices,
-so that the K-combinator or lambda calculus is written `λ λ 1`, not `λ λ 2`. The terms
+so that the K-combinator of lambda calculus is written `λ λ 1`, not `λ λ 2`. The terms
 may also be written with backslahes instead of Greek letter lambas: `\ \ 1`.
 
 The principal purpose of a DeBruijn program is to simplify a lambda expression into
