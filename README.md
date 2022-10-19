@@ -6,8 +6,10 @@ See the [Esolang Wiki page][page] for more information on DeBruijn
 
 ## Language Semantics
 
+### Overview
+
 The language DeBruijn is based off of a notation called the [De Bruijn Index][wikip],
-usable for representing terms of lambda calculus. Notably, DeBruijn uses 0-based indices,
+used for representing terms of lambda calculus. Notably, DeBruijn uses 0-based indices,
 so that the K-combinator or lambda calculus is written `λ λ 1`, not `λ λ 2`. The terms
 may also be written with backslahes instead of Greek letter lambas: `\ \ 1`.
 
@@ -34,6 +36,18 @@ Or as another example:
 ```shell
 $ debruijn example2
 rem: λ λ 1 (1 (1 0))
+```
+
+Output may be performed via "dirty" lambdas
+
+```debruijn
+"hello world\n"
+```
+
+```shell
+$ debruijn hello-world
+hello world
+rem: λ 0
 ```
 
 [page]: https://esolangs.org/wiki/DeBruijn
