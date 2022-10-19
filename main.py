@@ -4,7 +4,7 @@ import sys
 from typing import Optional
 
 class component:
-    def apply(self, arg, bind_level = -1):
+    def apply_rec(self, arg, bind_level = -1):
         '''
         1. find the variables bound under `bind_level` bindings (n == bind_level)
         2. replace the variables with the argument, with the free variables shifted
@@ -14,9 +14,12 @@ class component:
         'increment the free variables in the expression (n >= `bind_level`) by `amount`'
         pass
     def reify(): pass
-    def reduce1(self):
-        'reduces the component once, returning None if no reduction is possible'
-        pass
+    def reduce1(self, is_head = False):
+        '''
+        reduces the component once, returning None if no reduction is possible.
+        if component has a side effect, activates it
+        '''
+        # if is_head and self.msg is not None: print(self.msg)
     def reduce(self):
         'reduces the component into normal form'
         res = self
@@ -26,18 +29,13 @@ class component:
 @dataclass
 class index(component):
     num: int
-    def apply(self, arg, bind_level=-1):
+    def apply_rec(self, arg, bind_level=-1):
         if self.num == bind_level: return arg.shift(bind_level) # replace referenced variable
         if self.num > bind_level: return index(self.num - 1) # decrement free variable
         return self # bound variable unchanged
     def shift(self, amount, bind_level=-1):
         if self.num > bind_level: return index(self.num + amount) # shift free variable
         return self # bound variable unchanged
-    def reduce1(self):
-        if self.message is not None:
-            print(self.message, end='')
-            return lda(*self.body)
-        return super().reduce1()
 
     def __str__(self):
         return str(self.num)
@@ -47,58 +45,64 @@ class index(component):
 @dataclass
 class group(component):
     body: tuple
-    irriducible: bool
-    def __init__(self, *body, irriducible=False):
-        self.body, self.irriducible = body, irriducible
-    def apply(self, arg, bind_level=-1):
-        return group(*(x.apply(arg, bind_level) for x in self.body), irriducible=self.irriducible)
+    redux: bool
+    msg: Optional[str]
+    def __init__(self, *body, redux=True, msg=None):
+        self.body, self.redux, self.msg = body, redux, msg
+    def apply_rec(self, arg, bind_level=-1):
+        return group(*(x.apply_rec(arg, bind_level) for x in self.body), redux=self.redux)
     def shift(self, amount, bind_level=-1):
-        return group(*(x.shift(amount, bind_level) for x in self.body), irriducible=self.irriducible)
+        return group(*(x.shift(amount, bind_level) for x in self.body), redux=self.redux)
     def reduce1(self):
+        # super().reduce1()
+        if self.msg is not None:
+            print(self.msg, end='')
+            return lda(*self.body)
+
         T = type(self)
         if len(self.body) == 0: raise ValueError('empty group')
         # singleton group reduces to its element
         if len(self.body) == 1 and T is group: return self.body[0]
         # groups are unnecessary at the beginning of a group body
-        if type(self.body[0]) is group and not self.body[0].irriducible:
+        if type(self.body[0]) is group and self.body[0].redux:
             return T(*self.body[0].body, *self.body[1:])
         
         # if a lamba is at the head, it can be applied to group
         if len(self.body) >= 2 and isinstance(self.body[0], lda):
             lamb = self.body[0]
             arg = self.body[1]
-            return T(lamb.apply(arg).to_group(), *self.body[2:])
+            return T(lamb.apply(arg), *self.body[2:])
         
         # if a reducible group is anywhere in the head, reduce it
         for i, sub in enumerate(self.body):
-            if isinstance(sub, group) and not sub.irriducible and (red := sub.reduce1()):
+            if isinstance(sub, group) and sub.redux and (red := sub.reduce1()):
                 return T(*self.body[:i], red, *self.body[i+1:])
         else: return None
     def __str__(self):
-        if self.irriducible: return f"[{stringify_expression(self.body)}]"
-        return f"({stringify_expression(self.body)})"
+        if self.redux: return f"({stringify_expression(self.body)})"
+        return f"[{stringify_expression(self.body)}]"
     def __repr__(self):
-        if self.irriducible: return f'[{" ".join(repr(x) for x in self.body)}]'
-        return f'({" ".join(repr(x) for x in self.body)})'
+        if self.redux: return f'({" ".join(repr(x) for x in self.body)})'
+        return f'[{" ".join(repr(x) for x in self.body)}]'
 
 
 @dataclass
 class lda(group):
-    body: tuple
-    message: Optional[str]
-    def __init__(self, *body, message=None):
+    # body: tuple
+    def __init__(self, *body, msg=None):
         super().__init__()
-        self.body = body; self.message = message
-    def apply(self, arg, bind_level=-1):
-        return lda(*super().apply(arg, bind_level + 1).body)
+        self.body = body; self.msg = msg
+    def apply_rec(self, arg, bind_level=-1):
+        return lda(*super().apply_rec(arg, bind_level + 1).body, msg=self.msg)
+    def apply(self, arg):
+        return group(*self.apply_rec(arg).body, msg=self.msg)
     def shift(self, amount, bind_level=-1):
         return lda(*super().shift(amount, bind_level + 1).body)
-    def to_group(self): return group(*self.body)
     def __str__(self):
-        if self.message is not None: return f"\"λ {stringify_expression(self.body)}"
+        if self.msg is not None: return f"\"λ {stringify_expression(self.body)}"
         return f"λ {stringify_expression(self.body)}"
     def __repr__(self):
-        if self.message is not None: return f"\"λ {' '.join(repr(x) for x in self.body)};"
+        if self.msg is not None: return f"\"λ {' '.join(repr(x) for x in self.body)};"
         return f"λ {' '.join(repr(x) for x in self.body)};"
 
 @dataclass
@@ -106,11 +110,12 @@ class identifier(component):
     id: str
     def reify():
         raise NotImplementedError()
-    def apply(self, arg, bind_level=-1):
+    def apply_rec(self, arg, bind_level=-1):
         return self.reify().apply(arg, bind_level)
     def shift(self, amount, bind_level=-1):
         return self.reify().shift(amount, bind_level)
     def reduce1(self):
+        super().reduce1()
         return self.reify()
     def __str__(self):
         return self.id
@@ -156,12 +161,22 @@ def read_component_len(str):
         return index(int(match)), len(match)
     elif str[0] == '"': # printer lda
         match = re.match(r'"([^"]|\\")*"', str)[0]
-        message = match[1:-1]
-        return lda(index(0), message=message), len(match)
+        message = unescape(match[1:-1])
+        return lda(index(0), msg=message), len(match)
     else: # identifier
         if str[0] == '.':
             raise NotImplementedError()
         return identifier(str[0]), 1
+
+def unescape(str):
+    # TODO implement a more general unescaper
+    str = str.replace(r'\n', '\n')
+    str = str.replace(r'\r', '\r')
+    str = str.replace(r'\\', '\\')
+    str = str.replace(r'\"', '\"')
+    str = str.replace(r'\'', '\'')
+    str = str.replace(r'\t', '\t')
+    return str
 
 false = read_component(r'\\0')
 successor = read_component(r'\\\1(210)')
@@ -177,5 +192,14 @@ def main():
     ir = group(*read_components(program))
     ir = ir.reduce()
     print('rem:', ir)
+def debug():
+    with open('examples/hello-world') as file:
+        program = file.read()
+    ir = group(*read_components(program))
+    ir = ir.reduce()
+    print('rem:', ir)
 
-if __name__ == '__main__': main()
+DEBUG = True
+if __name__ == '__main__':
+    if DEBUG: debug()
+    else: main()
